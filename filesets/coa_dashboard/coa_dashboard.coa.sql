@@ -274,6 +274,11 @@ PRIMARY INDEX ( LOGDATE ,PROCID ,QUERYID ) ON COMMIT PRESERVE ROWS
 ;
 
 
+/*{{temp:consumption_step.csv}}*/ ;
+/*{{temp:consumption_stepgrp.csv}}*/ ;
+/*{{temp:stepgroupfunctions.csv}}*/ ;
+
+
 INSERT INTO CB_ComplexityScore
 
 		SELECT 
@@ -302,9 +307,9 @@ INSERT INTO CB_ComplexityScore
 			JOIN PDCRINFO.dbqlogtbl dbql
 				ON dbql.procid  = ST.procid
 				AND dbql.queryid = ST.queryid
-			JOIN TD_Consumption_DB_BASE_T.Step s
+			JOIN "consumption_step.csv" s
 				ON s.StepName = ST.StepName
-			JOIN TD_Consumption_DB_BASE_T.StepGroup sg
+			JOIN "consumption_stepgrp.csv" sg
 				ON sg.StepGroupName = s.StepGroup
 			WHERE 1=1
 			--AND sg.complexityweight IS NOT NULL
@@ -334,14 +339,14 @@ INSERT INTO CB_ComplexityScore
 			                /* Match using patterns based upon common punctuation forms. */
 			                /* In the examples, FN is the function name being matched. */
 						FROM  vt_cleansedSQL SQ 
-						JOIN TD_Consumption_DB_BASE_T.stepgroupfunctions sgf 
+						JOIN "stepgroupfunctions.csv" sgf 
 							ON 	SQ.cleansed like '% ' || sgf.functionname || ' %'   /* example: select FN ( */
 							OR  SQ.cleansed like '% ' || sgf.functionname || '(%'   /* example: select FN( */
 							OR  SQ.cleansed like '%,' || sgf.functionname || ' %'   /* example: select x,FN ( */
 							OR  SQ.cleansed like '%,' || sgf.functionname || '(%'   /* example: select x, FN( */
 							OR  SQ.cleansed like '%.' || sgf.functionname || ' %'   /* example: select TD_SYSFNLIB.FN ( */
 							OR  SQ.cleansed like '%.' || sgf.functionname || '(%'   /* example: select TD_SYSFNLIB.FN( */
-						JOIN TD_Consumption_DB_BASE_T.stepgroup sg
+						JOIN "consumption_stepgrp.csv" sg
 							ON sgf.stepgroupname = sg.stepgroupname
 						GROUP BY 1,2,3,4,5
 			) AS dt
@@ -469,7 +474,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -495,15 +500,15 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 FROM	CB_DAILY_QUERY_METRICS A
 inner join (
 
-select sum(TCORE_BUDGET_HOURS) as TCORE_BUDGET_HOURS
-from TD_Consumption_DB_BASE_T.CB_DIM_BUDGET_REF 
-where START_DT >= :DateFrom and END_DT <= (select monthend from Sys_Calendar.BusinessCalendar where calendar_date = :DateTo) 
+select 50000 as TCORE_BUDGET_HOURS
+from dbc.dbcinfo
+where START_DT >= {startdate} and END_DT <= (select monthend from Sys_Calendar.BusinessCalendar where calendar_date = {enddate}) 
 
  ) B
 on 1=1
 
 
-where A.LOGDATE between :DateFrom and :DateTo;
+where A.LOGDATE between {startdate} and {enddate};
 
 
 
@@ -513,17 +518,17 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'THDA'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
 	 when (day_of_week = 3) then 'TUE'
 	 when (day_of_week = 4) then 'WED'
-	 when (day_of_week = 5) then 'THUR'
+	 when (TD_Consumption_DB_BASE_T.day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -532,7 +537,7 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 ,case when ({daterange} = 1) then 'LW'
 	  when ({daterange} = 3) then 'LM'
 	  when ({daterange} = 5) then 'LQ' 
-	  Else '' 
+	"consumption_step.csv"  Else '' 
 	  END as DASH_DATE_LABEL
 ,'SUMMARY' as AGGREGATE_LEVEL
 ,Null as AGGREGATE_NAME
@@ -540,14 +545,14 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 ,'T-Core Hours Daily Avg' as DASH_METRIC_NAME
 ,'Daily Avg' as DASH_METRIC_NAME_SHORT
 ,'' as DASH_METRIC_DESC
-,sum(cast(TCoreUsage as dec(25,5)))/((:DateTo - :DateFrom)+1) as MEASURE_AMT
+,sum(cast(TCoreUsage as dec(25,5)))/(({enddate} - {startdate})+1) as MEASURE_AMT
 ,0 as BENCHMARK_AMT,
   
 	null as COMPLEXITY_SCORE,
 	null as NBR_ACTIVE_USERS
 
 FROM	CB_DAILY_QUERY_METRICS A
-where A.LOGDATE between :DateFrom and :DateTo;	
+where A.LOGDATE between {startdate} and {enddate};	
 
 
 
@@ -556,8 +561,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'TTLCPU'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -566,7 +571,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -590,15 +595,15 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 	null as NBR_ACTIVE_USERS
 
 FROM	CB_DAILY_QUERY_METRICS A
-where A.LOGDATE between :DateFrom and :DateTo;
+where A.LOGDATE between {startdate} and {enddate};
 
 --Summary Total TotalIO
 insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'TTLIO'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -607,7 +612,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -631,7 +636,7 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 	null as NBR_ACTIVE_USERS
 
 FROM	CB_DAILY_QUERY_METRICS A
-where A.LOGDATE between :DateFrom and :DateTo;		
+where A.LOGDATE between {startdate} and {enddate};		
 
 
 
@@ -640,8 +645,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'NBRQRY'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -650,7 +655,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -674,7 +679,7 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 	null as NBR_ACTIVE_USERS
 
 FROM	CB_DAILY_QUERY_METRICS A
-where A.LOGDATE between :DateFrom and :DateTo;	
+where A.LOGDATE between {startdate} and {enddate};	
 
 
 
@@ -684,8 +689,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'ACTUSER'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -694,7 +699,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -718,15 +723,15 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 	null as NBR_ACTIVE_USERS
 
 FROM	CB_DAILY_QUERY_METRICS A
-where A.LOGDATE between :DateFrom and :DateTo;		
+where A.LOGDATE between {startdate} and {enddate};		
 
 --Summary TCORE HR COST PER QUERY
 insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'TCHRCostPerQry'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -735,7 +740,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -759,7 +764,7 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 	null as NBR_ACTIVE_USERS
 
 FROM	CB_DAILY_QUERY_METRICS A
-where A.LOGDATE between :DateFrom and :DateTo;	
+where A.LOGDATE between {startdate} and {enddate};	
 
 CREATE VOLATILE TABLE CB_DAILY_CONCURRENCY_WK ,FALLBACK ,
      NO BEFORE JOURNAL,
@@ -810,7 +815,7 @@ FROM
         , CAST(1 AS SMALLINT) QryCount
         , PERIOD(firststeptime,firstresptime+ interval '1' second) QryDurationPeriod
         FROM pdcrinfo.dbqlogtbl as lg
-        WHERE logdate   BETWEEN  :DateFrom  AND :DateTo
+        WHERE logdate   BETWEEN  {startdate}  AND {enddate}
           AND NumOfActiveAmps >  0
          EXPAND ON QryDurationPeriod AS Qper BY ANCHOR ANCHOR_SECOND
         ) qrylog
@@ -829,8 +834,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'PKCONC'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -839,7 +844,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -863,7 +868,7 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 	null as NBR_ACTIVE_USERS
 
 FROM	CB_DAILY_CONCURRENCY_WK  A
-where A.LOGDATE between :DateFrom and :DateTo;	
+where A.LOGDATE between {startdate} and {enddate};	
 
 
 
@@ -872,8 +877,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'CONCUSER'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -882,7 +887,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -906,7 +911,7 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 	null as NBR_ACTIVE_USERS
 
 FROM CB_DAILY_CONCURRENCY_WK A
-where A.LOGDATE between :DateFrom and :DateTo;	
+where A.LOGDATE between {startdate} and {enddate};	
 
 
 CREATE VOLATILE TABLE CB_DAILY_EXTRACT_WK ,FALLBACK ,
@@ -961,7 +966,7 @@ FROM (	SELECT LogDate
 		                          or NumSteps = 0 or NumOfActiveAMPS = 0 then 0e0
 		            		else TotalIOCount/(AMPCPUTime *1e3) end  as UII
 		  				From  pdcrinfo.DBQLogTbl_hst
-						where  logdate BETWEEN :DateFrom and :DateTo           /* Modify window as desired */
+						where  logdate BETWEEN {startdate} and {enddate}           /* Modify window as desired */
 						-- Since we're looking for high UII< there has to be SOME AMP work involved
 		  				and NumSteps > 0 and AMPCPUTime > 0e0 and NumOfActiveAMPS > 0
 		  				-- Elminate BAR
@@ -984,8 +989,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'EXT'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -994,7 +999,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1018,7 +1023,7 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 	null as NBR_ACTIVE_USERS
 
 FROM	CB_DAILY_EXTRACT_WK  A
-where A.LOGDATE between :DateFrom and :DateTo;	
+where A.LOGDATE between {startdate} and {enddate};	
 
 
 
@@ -1027,8 +1032,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'EGRESS'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1037,7 +1042,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1061,7 +1066,7 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 	null as NBR_ACTIVE_USERS
 
 FROM	CB_DAILY_EXTRACT_WK  A
-where A.LOGDATE between :DateFrom and :DateTo;	
+where A.LOGDATE between {startdate} and {enddate};	
 
 
 --Summary DATA INGRESS
@@ -1069,8 +1074,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'INGRESS'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1079,7 +1084,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1103,7 +1108,7 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 	null as NBR_ACTIVE_USERS
 
 FROM	pdcrinfo.TableSpace_Hst A
-where A.LOGDATE between :DateFrom and :DateTo;	
+where A.LOGDATE between {startdate} and {enddate};	
 
 
 
@@ -1112,8 +1117,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'STORAGE'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1122,7 +1127,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1193,16 +1198,16 @@ insert into CB_DAILY_UTIL_WK
 select
 (select cast(count(distinct queryid) as bigint) as ttl from 
 CB_DAILY_QUERY_METRICS
-where logdate between :DateFrom and :DateTo 
+where logdate between {startdate} and {enddate} 
 ) as ttl
 ,(select cast(count(distinct queryid) as bigint) as answ from 
 CB_DAILY_QUERY_METRICS
 where statementtype in ('select')
-and logdate between :DateFrom and :DateTo) as Answ
+and logdate between {startdate} and {enddate}) as Answ
 ,(select cast(count(distinct queryid) as bigint) as Main from 
 CB_DAILY_QUERY_METRICS
 where statementtype  in ('collect statistics')
-and logdate between:DateFrom and :DateTo) as Main
+and logdate between{startdate} and {enddate}) as Main
 
 ,(select cast(count(distinct queryid) as bigint) as ETL from 
 CB_DAILY_QUERY_METRICS
@@ -1221,7 +1226,7 @@ where statementtype  in (
 ,'Execute Mload'
 ,'Commit Work'
 )
-and logdate between:DateFrom and :DateTo) as ETL
+and logdate between{startdate} and {enddate}) as ETL
 
 
 ,cast(ttl - Answ - Main - ETL as bigint) as SysProc
@@ -1237,8 +1242,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'ANSW'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1247,7 +1252,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1280,8 +1285,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'ETL'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1290,7 +1295,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1324,8 +1329,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'MAIN'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1334,7 +1339,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1367,8 +1372,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,'SysProc'
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1377,7 +1382,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1441,7 +1446,7 @@ count(distinct Username) as ActiveUser,
 sum(ComplexityLevel) as ComplexityLevel,
 sum(cast(TCoreUsage as dec(25,5))) as TCoreUsage
 FROM	CB_DAILY_QUERY_METRICS
-where LOGDATE between :DateFrom and :DateTo
+where LOGDATE between {startdate} and {enddate}
 group by 1
 ) a
 ;
@@ -1457,8 +1462,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,b.DEPARTMENT
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1467,7 +1472,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1500,7 +1505,7 @@ FROM (
 			DEPARTMENT,
 			sum(cast(TCoreUsage as dec(15,2))) as TCoreUsage
 			from CB_DAILY_QUERY_METRICS A
-			where a.logdate between :DateFrom and :DateTo 
+			where a.logdate between {startdate} and {enddate} 
 			group by 1
 	
 	) a
@@ -1514,8 +1519,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,b.DEPARTMENT
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1524,7 +1529,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1557,7 +1562,7 @@ FROM (
 			DEPARTMENT,
 			count(distinct userid) as ActiveUser
 			from CB_DAILY_QUERY_METRICS A
-			where A.LOGDATE between :DateFrom and :DateTo 
+			where A.LOGDATE between {startdate} and {enddate} 
 			group by 1
 	
 	) a
@@ -1569,8 +1574,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,b.DEPARTMENT
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1579,7 +1584,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1612,7 +1617,7 @@ FROM (
 			DEPARTMENT,
 			count(distinct queryid) as QueryNum
 			from CB_DAILY_QUERY_METRICS A
-			where A.LOGDATE between :DateFrom and :DateTo 
+			where A.LOGDATE between {startdate} and {enddate} 
 			group by 1
 	
 	) a
@@ -1679,7 +1684,7 @@ from
             		
         		
         WHERE 	
-            LG.logdate  between :DateFrom and :DateTo      --- CHANGE DATE RANGE WITH MACRO PARAMETERS
+            LG.logdate  between {startdate} and {enddate}      --- CHANGE DATE RANGE WITH MACRO PARAMETERS
           AND NumOfActiveAmps >  0
           --AND QM.DEPARTMENT = 'ACCOUNTING'
           		
@@ -1698,8 +1703,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,b.DEPARTMENT
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1708,7 +1713,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1729,15 +1734,15 @@ from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
 ,0 as BENCHMARK_AMT
 ,NULL as COMPLEXITY_SCORE
 ,NULL NBR_ACTIVE_USERS
-FROM TD_Consumption_DB_BASE_T.CB_DAILY_CONCURRENCY_DEPT_WK b;
+FROM CB_DAILY_CONCURRENCY_DEPT_WK b;
 
 ----DEPT RESOURCE SHARING  (CONCURRENT USERS) 
-insert into TD_CONSUMPTION_DB_BASE_T.CB_DAILY_SUMMARY_CURR_PREV_WK
+insert into  CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,b.DEPARTMENT
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1746,7 +1751,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
@@ -1777,8 +1782,8 @@ insert into CB_DAILY_SUMMARY_CURR_PREV_WK
 SELECT  
  {daterange} as DateRange
 ,b.DEPARTMENT
-,:DateFrom as Date_Start
-,:DateTo as Date_End
+,{startdate} as Date_Start
+,{enddate} as Date_End
 ,case when ({daterange} = 1) then (select  
 	case when (day_of_week = 1) then 'SUN'
 	 when (day_of_week = 2) then 'MON'
@@ -1787,7 +1792,7 @@ SELECT
 	 when (day_of_week = 5) then 'THUR'
 	 when (day_of_week = 6) then 'FRI'
 	 ELSE  'SAT' END 
-from Sys_Calendar.CALENDAR where calendar_date = :DateTo)
+from Sys_Calendar.CALENDAR where calendar_date = {enddate})
 	  when ({daterange} = 3) then 'MONTH'
 	  when ({daterange} = 5) then 'QTR' 
 	  Else '' 
