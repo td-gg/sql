@@ -482,3 +482,25 @@ gss_resusage_macro:
       collection:   ["dbc"]
       dbsversion:   ["15.10"]
       gitfile:      "gss_resusage/gss_resusage.dbc.1510.coa.sql"
+
+Consumption_Dashboard:
+  active:     "True"
+  show_in_gui: "True"
+  fileset_version: "1.0"
+  fileset_type:  "CSM"
+  startdate:  "Current_Date - 15"  # last 6 weeks
+  enddate:    "Current_Date - 1"
+  tcorebudget:    ["50000"]
+  tcorecapacity:  ["270"]
+  qtroffset:    ["0"]
+  systemcost:   ["4000000"]
+  dbqlflushrate:  ["6"]
+  SPMAInterval: ["600"]
+  AvgMBSecRatio:  ["93347"]
+  daterange:    ["1"]
+  files:
+    coa_dashbaord:
+      collection:   ["pdcr"]
+      dbsversion:   ["16.20"]
+      gitfile:      "coa_dashboard/coa_dashboard.1620.pdcr.v1.coa"
+
